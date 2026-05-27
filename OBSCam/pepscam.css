@@ -1346,6 +1346,20 @@ input {
   border-bottom-color: var(--line);
 }
 
+.header-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.header-actions .compact-select {
+  width: auto;
+  min-width: 96px;
+}
+
+#buffer-select {
+  min-width: 118px;
+}
+
 .control-panel {
   padding: 14px;
 }

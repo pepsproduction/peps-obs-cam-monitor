@@ -97,6 +97,15 @@
         <div class="logo-header-sub">CONTROL CENTER</div>
       </div>
       <div class="header-actions">
+        <select id="buffer-select" class="compact-select" title="Smooth Buffer" onchange="PEPSCamMonitor.changeBufferSeconds(this.value)">
+          <option value="0">Buffer Off</option>
+          <option value="1">Buffer 1s</option>
+          <option value="2">Buffer 2s</option>
+          <option value="3">Buffer 3s</option>
+          <option value="4">Buffer 4s</option>
+          <option value="5">Relay 5s</option>
+          <option value="10">Relay 10s</option>
+        </select>
         <select id="max-cams-select" class="compact-select" onchange="PEPSCamMonitor.changeMaxCams(this.value)">
           <option value="1">1 Cam</option>
           <option value="2">2 Cams</option>

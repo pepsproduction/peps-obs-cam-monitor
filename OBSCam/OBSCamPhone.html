@@ -116,16 +116,26 @@
       </div>
 
       <div class="setup-block">
+        <label>Streaming Mode</label>
+        <select id="performance-mode" class="compact-select">
+          <option value="fps" selected>60 FPS Priority</option>
+          <option value="quality">Quality Priority</option>
+        </select>
+      </div>
+
+      <div class="setup-block">
         <label>Bitrate</label>
         <select id="bitrate" class="compact-select" onchange="PEPSCamPhone.checkCustomBitrate(this)">
           <option value="2000">2.0 M</option>
-          <option value="2500" selected>2.5 M</option>
+          <option value="2500">2.5 M</option>
           <option value="3000">3.0 M</option>
           <option value="3500">3.5 M</option>
           <option value="4000">4.0 M</option>
-          <option value="6000">6.0 M</option>
+          <option value="6000" selected>6.0 M</option>
           <option value="8500">8.5 M</option>
           <option value="10000">10 M</option>
+          <option value="12000">12 M</option>
+          <option value="15000">15 M</option>
           <option value="custom">Custom...</option>
         </select>
       </div>
@@ -187,6 +197,8 @@
             <option value="6000">6.0 M</option>
             <option value="8500">8.5 M</option>
             <option value="10000">10 M</option>
+            <option value="12000">12 M</option>
+            <option value="15000">15 M</option>
           </select>
         </div>
       </div>

@@ -8,6 +8,7 @@
   const STORAGE_ROOM = "pepscam_room_id";
   const STORAGE_ROOM_NAME = "pepscam_room_name";
   const STORAGE_MAX_CAMS = "pepscam_max_cams";
+  const STORAGE_BUFFER_SECONDS = "pepscam_buffer_seconds";
 
   const rtcConfig = {
     iceServers: [
@@ -23,6 +24,7 @@
     roomId: "",
     roomName: "",
     maxCams: 4,
+    bufferSeconds: 0,
     controlPeer: null,
     phoneConnections: new Map(),
     sourceConnections: new Map(),
@@ -31,7 +33,18 @@
     staleTimer: null,
     screenPeer: null,
     screenCall: null,
-    screenControlConn: null
+    screenControlConn: null,
+    screenBufferSeconds: 0,
+    currentScreenStream: null,
+    bufferRecorder: null,
+    bufferMediaSource: null,
+    bufferSourceBuffer: null,
+    bufferObjectUrl: "",
+    bufferQueue: [],
+    bufferRelayStarted: false,
+    bufferRelayTimer: null,
+    bufferRequestTimer: null,
+    bufferFallbackTimer: null
   };
 
   const $ = (id) => document.getElementById(id);
@@ -122,12 +135,19 @@
     state.roomId = rejoin && savedRoom ? savedRoom : randomRoomId();
     state.roomName = localStorage.getItem(STORAGE_ROOM_NAME) || "";
     state.maxCams = clampMaxCams(parseInt(localStorage.getItem(STORAGE_MAX_CAMS) || "4", 10));
+    state.bufferSeconds = clampBufferSeconds(localStorage.getItem(STORAGE_BUFFER_SECONDS));
     localStorage.setItem(STORAGE_ROOM, state.roomId);
     startConnectionProcess();
   }
 
   function clampMaxCams(value) {
     return Math.min(8, Math.max(1, Number.isFinite(value) ? value : 4));
+  }
+
+  function clampBufferSeconds(value) {
+    const seconds = parseInt(value || "0", 10);
+    if (!Number.isFinite(seconds)) return 0;
+    return Math.min(10, Math.max(0, seconds));
   }
 
   async function startConnectionProcess() {
@@ -193,6 +213,7 @@
   function showControlPanel() {
     setText("display-room-id", state.roomId);
     $("max-cams-select").value = String(state.maxCams);
+    $("buffer-select").value = String(state.bufferSeconds);
     updateRoomNameDisplay(state.roomName);
     renderCamList();
     updatePhoneLink();
@@ -259,7 +280,8 @@
         version: VERSION,
         roomId: state.roomId,
         roomName: state.roomName,
-        maxCams: state.maxCams
+        maxCams: state.maxCams,
+        bufferSeconds: state.bufferSeconds
       });
     });
 
@@ -385,6 +407,12 @@
     sendConfigToAll();
   }
 
+  function changeBufferSeconds(value) {
+    state.bufferSeconds = clampBufferSeconds(value);
+    localStorage.setItem(STORAGE_BUFFER_SECONDS, String(state.bufferSeconds));
+    sendConfigToAll();
+  }
+
   function sendConfigToAll() {
     const payload = {
       type: "config",
@@ -393,7 +421,8 @@
       version: VERSION,
       roomId: state.roomId,
       roomName: state.roomName,
-      maxCams: state.maxCams
+      maxCams: state.maxCams,
+      bufferSeconds: state.bufferSeconds
     };
     state.phoneConnections.forEach((conn) => safeSend(conn, payload));
     state.sourceConnections.forEach((conn) => safeSend(conn, payload));
@@ -467,6 +496,7 @@
     url.searchParams.set("mode", "screen");
     url.searchParams.set("cam", String(cam));
     url.searchParams.set("room", state.roomId);
+    url.searchParams.set("buffer", String(state.bufferSeconds));
     return url.toString();
   }
 
@@ -670,6 +700,7 @@
         url.searchParams.set("mode", "screen");
         url.searchParams.set("cam", String(cam));
         url.searchParams.set("room", newRoom);
+        url.searchParams.set("buffer", String(state.bufferSeconds));
 
         try {
           await obs.call("SetInputSettings", {
@@ -722,9 +753,198 @@
     checkExistingSession();
   }
 
-  async function startScreenMode(room, cam) {
+  function startScreenPlayback(stream) {
+    const video = $("remote-video");
+    document.body.dataset.bufferSeconds = String(state.screenBufferSeconds);
+    stopBufferedRelay();
+    applyReceiverJitterBuffer();
+
+    if (state.screenBufferSeconds > 4 && startBufferedRelay(stream, state.screenBufferSeconds)) {
+      document.body.dataset.bufferMode = "relay";
+      return;
+    }
+
+    document.body.dataset.bufferMode = state.screenBufferSeconds > 0 ? "jitter" : "off";
+    video.removeAttribute("src");
+    video.srcObject = stream;
+    video.play().catch(() => {});
+  }
+
+  function applyReceiverJitterBuffer() {
+    const pc = state.screenCall && state.screenCall.peerConnection;
+    if (!pc || !pc.getReceivers) return;
+
+    const targetMs = Math.min(state.screenBufferSeconds * 1000, 4000);
+    pc.getReceivers().forEach((receiver) => {
+      if ("jitterBufferTarget" in receiver) {
+        try {
+          receiver.jitterBufferTarget = targetMs;
+        } catch (err) {
+          console.debug("[PEPSCam] jitterBufferTarget failed", err);
+        }
+      }
+    });
+  }
+
+  function startBufferedRelay(stream, seconds) {
+    if (!window.MediaRecorder || !window.MediaSource) return false;
+
+    const video = $("remote-video");
+    const mimeType = pickRelayMimeType();
+    if (!mimeType) return false;
+
+    try {
+      const mediaSource = new MediaSource();
+      const objectUrl = URL.createObjectURL(mediaSource);
+      const recorder = new MediaRecorder(stream, { mimeType });
+
+      state.bufferMediaSource = mediaSource;
+      state.bufferRecorder = recorder;
+      state.bufferObjectUrl = objectUrl;
+      state.bufferQueue = [];
+      state.bufferRelayStarted = false;
+
+      video.srcObject = null;
+      video.src = objectUrl;
+
+      mediaSource.addEventListener("sourceopen", () => {
+        try {
+          state.bufferSourceBuffer = mediaSource.addSourceBuffer(mimeType);
+          state.bufferSourceBuffer.mode = "sequence";
+          state.bufferSourceBuffer.addEventListener("updateend", pumpRelayBuffer);
+          pumpRelayBuffer();
+        } catch (err) {
+          console.warn("[PEPSCam] relay source buffer failed", err);
+          stopBufferedRelay();
+          video.srcObject = stream;
+          video.play().catch(() => {});
+        }
+      }, { once: true });
+
+      recorder.ondataavailable = (event) => {
+        document.body.dataset.recorderState = recorder.state;
+        if (!event.data || !event.data.size) return;
+        clearTimeout(state.bufferFallbackTimer);
+        state.bufferFallbackTimer = null;
+        event.data.arrayBuffer().then((buffer) => {
+          state.bufferQueue.push(buffer);
+          document.body.dataset.bufferQueue = String(state.bufferQueue.length);
+          pumpRelayBuffer();
+        }).catch(() => {});
+      };
+
+      recorder.onerror = (event) => {
+        console.warn("[PEPSCam] relay recorder failed", event && (event.error || event.name || event.type));
+        stopBufferedRelay();
+        video.srcObject = stream;
+        video.play().catch(() => {});
+      };
+      recorder.onstart = () => {
+        document.body.dataset.recorderState = recorder.state;
+      };
+
+      recorder.start(250);
+      state.bufferRequestTimer = setInterval(() => {
+        if (recorder.state === "recording") {
+          try {
+            recorder.requestData();
+          } catch {}
+        }
+      }, 250);
+      state.bufferRelayTimer = setTimeout(() => {
+        state.bufferRelayStarted = true;
+        video.play().catch(() => {});
+        pumpRelayBuffer();
+      }, seconds * 1000);
+      state.bufferFallbackTimer = setTimeout(() => {
+        if (!state.bufferQueue.length && video.readyState === 0) {
+          console.warn("[PEPSCam] relay produced no chunks; falling back to receiver jitter buffer");
+          stopBufferedRelay();
+          document.body.dataset.bufferMode = "jitter";
+          video.srcObject = stream;
+          video.play().catch(() => {});
+        }
+      }, Math.max(2200, Math.min(seconds * 1000 + 1800, 5000)));
+
+      return true;
+    } catch (err) {
+      console.warn("[PEPSCam] relay buffer unavailable", err);
+      stopBufferedRelay();
+      return false;
+    }
+  }
+
+  function pickRelayMimeType() {
+    const candidates = [
+      "video/webm;codecs=vp8,opus",
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8",
+      "video/webm"
+    ];
+
+    return candidates.find((type) => {
+      const recorderOk = MediaRecorder.isTypeSupported ? MediaRecorder.isTypeSupported(type) : true;
+      const sourceOk = MediaSource.isTypeSupported ? MediaSource.isTypeSupported(type) : true;
+      return recorderOk && sourceOk;
+    }) || "";
+  }
+
+  function pumpRelayBuffer() {
+    const sourceBuffer = state.bufferSourceBuffer;
+    if (!state.bufferRelayStarted || !sourceBuffer || sourceBuffer.updating || !state.bufferQueue.length) return;
+
+    try {
+      sourceBuffer.appendBuffer(state.bufferQueue.shift());
+      document.body.dataset.bufferQueue = String(state.bufferQueue.length);
+      document.body.dataset.bufferedRanges = getBufferedRanges(sourceBuffer);
+    } catch (err) {
+      console.warn("[PEPSCam] relay append failed", err);
+      state.bufferQueue.length = 0;
+    }
+  }
+
+  function getBufferedRanges(sourceBuffer) {
+    try {
+      const ranges = [];
+      for (let i = 0; i < sourceBuffer.buffered.length; i += 1) {
+        ranges.push(`${sourceBuffer.buffered.start(i).toFixed(2)}-${sourceBuffer.buffered.end(i).toFixed(2)}`);
+      }
+      return ranges.join(",");
+    } catch {
+      return "";
+    }
+  }
+
+  function stopBufferedRelay() {
+    clearTimeout(state.bufferRelayTimer);
+    clearTimeout(state.bufferFallbackTimer);
+    clearInterval(state.bufferRequestTimer);
+    state.bufferRelayTimer = null;
+    state.bufferFallbackTimer = null;
+    state.bufferRequestTimer = null;
+
+    if (state.bufferRecorder && state.bufferRecorder.state !== "inactive") {
+      try {
+        state.bufferRecorder.stop();
+      } catch {}
+    }
+
+    if (state.bufferObjectUrl) {
+      URL.revokeObjectURL(state.bufferObjectUrl);
+    }
+
+    state.bufferRecorder = null;
+    state.bufferMediaSource = null;
+    state.bufferSourceBuffer = null;
+    state.bufferObjectUrl = "";
+    state.bufferQueue = [];
+    state.bufferRelayStarted = false;
+  }
+
+  async function startScreenMode(room, cam, bufferSeconds) {
     state.roomId = cleanRoom(room);
     const camKey = String(clampMaxCams(parseInt(cam || "1", 10)));
+    state.screenBufferSeconds = clampBufferSeconds(bufferSeconds);
     showOnly("mode-screen");
 
     if (!state.roomId) {
@@ -752,15 +972,25 @@
       setWaiting("CONNECTING...");
       call.answer();
       call.on("stream", (stream) => {
-        $("remote-video").srcObject = stream;
-        setTimeout(() => $("waiting-screen").classList.add("hidden"), 600);
+        state.currentScreenStream = stream;
+        startScreenPlayback(stream);
+        const label = state.screenBufferSeconds > 0 ? `BUFFER ${state.screenBufferSeconds}s` : "LIVE";
+        setWaiting(`${label} : CONNECTING...`);
+        const hideDelay = state.screenBufferSeconds > 4
+          ? state.screenBufferSeconds * 1000 + 1000
+          : Math.max(600, Math.min(state.screenBufferSeconds * 1000, 2500));
+        setTimeout(() => $("waiting-screen").classList.add("hidden"), hideDelay);
         sendScreenMessage({ type: "source-ready", cam: camKey });
       });
       call.on("close", () => {
+        stopBufferedRelay();
+        state.currentScreenStream = null;
         $("remote-video").srcObject = null;
         setWaiting("WAITING FOR CAMERA...");
       });
       call.on("error", () => {
+        stopBufferedRelay();
+        state.currentScreenStream = null;
         $("remote-video").srcObject = null;
         setWaiting("WAITING FOR CAMERA...");
       });
@@ -788,8 +1018,16 @@
         const data = normalizeMessage(message);
         if (data.type === "reset") {
           if (state.screenCall) state.screenCall.close();
+          stopBufferedRelay();
+          state.currentScreenStream = null;
           $("remote-video").srcObject = null;
           setWaiting("WAITING FOR CAMERA...");
+        } else if (data.type === "config") {
+          const nextBuffer = clampBufferSeconds(data.bufferSeconds);
+          if (nextBuffer !== state.screenBufferSeconds) {
+            state.screenBufferSeconds = nextBuffer;
+            if (state.currentScreenStream) startScreenPlayback(state.currentScreenStream);
+          }
         }
       });
       conn.on("close", () => {});
@@ -813,6 +1051,7 @@
     initializeControl,
     retryConnection,
     changeMaxCams,
+    changeBufferSeconds,
     showRoomNameEdit,
     cancelRoomNameEdit,
     confirmRoomName,
@@ -829,7 +1068,7 @@
   };
 
   if (mode === "screen") {
-    startScreenMode(params.get("room"), params.get("cam"));
+    startScreenMode(params.get("room"), params.get("cam"), params.get("buffer"));
   } else {
     checkExistingSession();
   }

@@ -10,7 +10,8 @@
     customBitrate: "pepscam_phone_custom_bitrate",
     audio: "pepscam_phone_audio",
     camera: "pepscam_phone_camera",
-    mic: "pepscam_phone_mic"
+    mic: "pepscam_phone_mic",
+    performanceMode: "pepscam_phone_performance_mode"
   };
 
   const rtcConfig = {
@@ -79,6 +80,7 @@
     localStorage.setItem(STORAGE.bitrate, $("bitrate").value === "custom" ? String(state.customBitrate) : $("bitrate").value);
     localStorage.setItem(STORAGE.customBitrate, String(state.customBitrate));
     localStorage.setItem(STORAGE.audio, $("audio-enable").value);
+    localStorage.setItem(STORAGE.performanceMode, $("performance-mode").value);
     localStorage.setItem(STORAGE.camera, $("camera-select").value);
     localStorage.setItem(STORAGE.mic, $("audio-source").value);
   }
@@ -89,10 +91,12 @@
     const bitrate = localStorage.getItem(STORAGE.bitrate);
     const custom = parseInt(localStorage.getItem(STORAGE.customBitrate) || "2500", 10);
     const audio = localStorage.getItem(STORAGE.audio);
+    const performanceMode = localStorage.getItem(STORAGE.performanceMode);
 
     if (res) $("res").value = res;
     if (fps) $("fps").value = fps;
     if (audio) $("audio-enable").value = audio;
+    if (performanceMode) $("performance-mode").value = performanceMode;
     if (Number.isFinite(custom)) state.customBitrate = custom;
 
     if (bitrate) {
@@ -285,6 +289,7 @@
 
     state.videoTrack = state.myStream.getVideoTracks()[0] || null;
     state.audioTrack = state.myStream.getAudioTracks()[0] || null;
+    applyTrackTuning(state.videoTrack, fps);
     if (state.audioTrack) state.audioTrack.enabled = startUnmuted;
 
     $("preview").srcObject = state.myStream;
@@ -322,8 +327,12 @@
   function buildCameraAttempts(quality, fps) {
     if (fps < 50) return [{ quality, fpsMode: "normal" }];
 
-    const qualityOrder = [quality, 720, 480]
+    const mode = getPerformanceMode();
+    const fpsFirstOrder = [quality > 720 ? 720 : quality, 480, quality]
       .filter((value, index, list) => value <= quality && list.indexOf(value) === index);
+    const qualityFirstOrder = [quality]
+      .filter((value, index, list) => value <= quality && list.indexOf(value) === index);
+    const qualityOrder = mode === "fps" ? fpsFirstOrder : qualityFirstOrder;
 
     return [
       ...qualityOrder.map((value) => ({ quality: value, fpsMode: "exact" })),
@@ -353,6 +362,13 @@
     if (fps >= 50 && fpsMode === "minimum") return { ideal: fps, min: fps - 10 };
     if (fps >= 50 && fpsMode === "soft") return { ideal: fps };
     return { ideal: fps, min: 24 };
+  }
+
+  function applyTrackTuning(track, fps = getTargetFps()) {
+    if (!track) return;
+    try {
+      track.contentHint = fps >= 50 ? "motion" : "detail";
+    } catch {}
   }
 
   function syncLiveSelectors() {
@@ -509,6 +525,17 @@
     return parseInt($("live-fps").value || $("fps").value || "30", 10) || 30;
   }
 
+  function getPerformanceMode() {
+    const select = $("performance-mode");
+    return select ? select.value : "fps";
+  }
+
+  function getDegradationPreference() {
+    return getTargetFps() >= 50 && getPerformanceMode() === "fps"
+      ? "maintain-framerate"
+      : "maintain-resolution";
+  }
+
   function setBitrate(bitrate) {
     const pc = state.mediaCall && state.mediaCall.peerConnection;
     if (!pc) return;
@@ -521,7 +548,7 @@
     params.encodings[0].maxBitrate = bitrate;
     params.encodings[0].minBitrate = Math.floor(bitrate * 0.45);
     params.encodings[0].maxFramerate = getTargetFps();
-    params.encodings[0].degradationPreference = "maintain-resolution";
+    params.degradationPreference = getDegradationPreference();
     sender.setParameters(params).catch((err) => console.debug("setBitrate failed", err));
   }
 
@@ -659,6 +686,7 @@
       });
 
       const newTrack = capture.stream.getVideoTracks()[0];
+      applyTrackTuning(newTrack, fps);
       replaceTrack("video", newTrack);
       state.videoTrack = newTrack;
       rebuildMediaStream();
