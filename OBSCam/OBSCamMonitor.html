@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="pepscam.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.5/peerjs.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script src="vendor/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/obs-websocket-js@5"></script>
 </head>
 <body>
@@ -152,7 +152,10 @@
   <div id="phone-link-modal" class="modal-overlay">
     <div class="modal-box">
       <h3>Scan to Connect</h3>
-      <div class="qr-box"><canvas id="qr-code-canvas" width="132" height="132"></canvas></div>
+      <div id="qr-code-box" class="qr-box">
+        <canvas id="qr-code-canvas" width="132" height="132"></canvas>
+        <div id="qr-code-dom" class="hidden"></div>
+      </div>
       <div class="phone-url-line">
         <input id="phone-url-input" class="compact-input" readonly>
         <button class="btn-small" onclick="PEPSCamMonitor.copyPhoneLink()">Copy</button>

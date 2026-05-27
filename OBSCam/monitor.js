@@ -470,17 +470,90 @@
     return url.toString();
   }
 
-  function updatePhoneLink() {
+  async function updatePhoneLink() {
     const url = phoneUrl();
     $("phone-url-input").value = url;
+    await renderPhoneQr(url);
+  }
+
+  async function renderPhoneQr(url) {
     const canvas = $("qr-code-canvas");
-    if (window.QRCode && canvas) {
-      QRCode.toCanvas(canvas, url, {
+    const dom = $("qr-code-dom");
+    if (!canvas || !dom) return;
+
+    dom.innerHTML = "";
+    dom.classList.add("hidden");
+    canvas.classList.remove("hidden");
+    clearQrCanvas(canvas);
+
+    if (window.QRCode && typeof window.QRCode.toCanvas === "function") {
+      try {
+        await qrToCanvas(canvas, url);
+        if (!isQrCanvasBlank(canvas)) return;
+      } catch (err) {
+        console.warn("[PEPSCam] QR canvas render failed", err);
+      }
+    }
+
+    if (typeof window.QRCode === "function") {
+      try {
+        new window.QRCode(dom, {
+          text: url,
+          width: 132,
+          height: 132,
+          colorDark: "#000000",
+          colorLight: "#ffffff",
+          correctLevel: window.QRCode.CorrectLevel ? window.QRCode.CorrectLevel.M : 0
+        });
+        canvas.classList.add("hidden");
+        dom.classList.remove("hidden");
+        return;
+      } catch (err) {
+        console.warn("[PEPSCam] QR DOM render failed", err);
+      }
+    }
+
+    drawQrFallback(canvas);
+  }
+
+  function qrToCanvas(canvas, url) {
+    return new Promise((resolve, reject) => {
+      window.QRCode.toCanvas(canvas, url, {
         width: 132,
         margin: 1,
         color: { dark: "#000000", light: "#ffffff" }
-      }).catch(() => {});
+      }, (err) => err ? reject(err) : resolve());
+    });
+  }
+
+  function clearQrCanvas(canvas) {
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  function isQrCanvasBlank(canvas) {
+    try {
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      for (let i = 0; i < data.length; i += 16) {
+        if (data[i] < 80 && data[i + 1] < 80 && data[i + 2] < 80 && data[i + 3] > 0) return false;
+      }
+    } catch {
+      return false;
     }
+    return true;
+  }
+
+  function drawQrFallback(canvas) {
+    const ctx = canvas.getContext("2d");
+    clearQrCanvas(canvas);
+    ctx.fillStyle = "#111827";
+    ctx.font = "bold 12px Segoe UI, Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("QR ERROR", 66, 58);
+    ctx.font = "10px Segoe UI, Arial, sans-serif";
+    ctx.fillText("USE COPY", 66, 76);
   }
 
   function openLinkModal() {

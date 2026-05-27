@@ -572,9 +572,17 @@ button:disabled {
 }
 
 .qr-box canvas,
-.qr-box img {
+.qr-box img,
+.qr-box #qr-code-dom,
+.qr-box #qr-code-dom canvas,
+.qr-box #qr-code-dom img,
+.qr-box #qr-code-dom table {
   width: 132px;
   height: 132px;
+}
+
+.qr-box #qr-code-dom table {
+  border-collapse: collapse;
 }
 
 .connect-steps {
