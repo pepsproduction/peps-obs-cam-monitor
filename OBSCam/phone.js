@@ -272,27 +272,16 @@
     const selectedMic = $("audio-source").value;
     const startUnmuted = $("audio-enable").value === "true";
 
-    const videoConstraints = {
-      width: { ideal: Math.round(quality * 16 / 9) },
-      height: { ideal: quality },
-      frameRate: { ideal: fps, min: fps > 30 ? 50 : 24 }
-    };
-
-    if (selectedCam) {
-      videoConstraints.deviceId = { exact: selectedCam };
-    } else {
-      videoConstraints.facingMode = { ideal: "environment" };
-    }
-
     let audioConstraints = true;
     if (selectedMic) audioConstraints = { deviceId: { exact: selectedMic } };
 
-    try {
-      state.myStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: audioConstraints });
-    } catch (err) {
-      videoConstraints.frameRate = { ideal: fps };
-      state.myStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: audioConstraints });
-    }
+    const capture = await captureCameraStream({
+      quality,
+      fps,
+      deviceId: selectedCam,
+      audio: audioConstraints
+    });
+    state.myStream = capture.stream;
 
     state.videoTrack = state.myStream.getVideoTracks()[0] || null;
     state.audioTrack = state.myStream.getAudioTracks()[0] || null;
@@ -302,6 +291,68 @@
     updateMicButton();
     updateLiveResDisplay();
     checkZoomCapabilities();
+  }
+
+  async function captureCameraStream({ quality, fps, deviceId, audio }) {
+    let lastError = null;
+
+    for (const attempt of buildCameraAttempts(quality, fps)) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: buildVideoConstraints(attempt.quality, fps, deviceId, attempt.fpsMode),
+          audio
+        });
+
+        const track = stream.getVideoTracks()[0];
+        const actualFps = track && track.getSettings ? Number(track.getSettings().frameRate || 0) : 0;
+        const strictEnough = attempt.fpsMode !== "exact" || fps < 50 || !actualFps || actualFps >= fps - 5;
+
+        if (strictEnough) return { stream, quality: attempt.quality, fpsMode: attempt.fpsMode };
+
+        stream.getTracks().forEach((item) => item.stop());
+        lastError = new Error(`Camera returned ${actualFps}fps instead of ${fps}fps`);
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error("Camera capture failed");
+  }
+
+  function buildCameraAttempts(quality, fps) {
+    if (fps < 50) return [{ quality, fpsMode: "normal" }];
+
+    const qualityOrder = [quality, 720, 480]
+      .filter((value, index, list) => value <= quality && list.indexOf(value) === index);
+
+    return [
+      ...qualityOrder.map((value) => ({ quality: value, fpsMode: "exact" })),
+      { quality, fpsMode: "minimum" },
+      { quality, fpsMode: "soft" }
+    ];
+  }
+
+  function buildVideoConstraints(quality, fps, deviceId, fpsMode) {
+    const constraints = {
+      width: { ideal: Math.round(quality * 16 / 9) },
+      height: { ideal: quality },
+      frameRate: buildFrameRateConstraint(fps, fpsMode)
+    };
+
+    if (deviceId) {
+      constraints.deviceId = { exact: deviceId };
+    } else {
+      constraints.facingMode = { ideal: "environment" };
+    }
+
+    return constraints;
+  }
+
+  function buildFrameRateConstraint(fps, fpsMode) {
+    if (fps >= 50 && fpsMode === "exact") return { exact: fps };
+    if (fps >= 50 && fpsMode === "minimum") return { ideal: fps, min: fps - 10 };
+    if (fps >= 50 && fpsMode === "soft") return { ideal: fps };
+    return { ideal: fps, min: 24 };
   }
 
   function syncLiveSelectors() {
@@ -454,6 +505,10 @@
     return parseInt($("live-bitrate").value || $("bitrate").value || "2500", 10) || 2500;
   }
 
+  function getTargetFps() {
+    return parseInt($("live-fps").value || $("fps").value || "30", 10) || 30;
+  }
+
   function setBitrate(bitrate) {
     const pc = state.mediaCall && state.mediaCall.peerConnection;
     if (!pc) return;
@@ -465,6 +520,7 @@
     if (!params.encodings) params.encodings = [{}];
     params.encodings[0].maxBitrate = bitrate;
     params.encodings[0].minBitrate = Math.floor(bitrate * 0.45);
+    params.encodings[0].maxFramerate = getTargetFps();
     params.encodings[0].degradationPreference = "maintain-resolution";
     sender.setParameters(params).catch((err) => console.debug("setBitrate failed", err));
   }
@@ -590,35 +646,24 @@
 
     const quality = forceRes || parseInt($("live-res").value, 10);
     const fps = forceFps || parseInt($("live-fps").value, 10);
-    const videoConstraints = {
-      width: { ideal: Math.round(quality * 16 / 9) },
-      height: { ideal: quality },
-      frameRate: { ideal: fps, min: fps > 30 ? 50 : 24 }
-    };
-
-    if (deviceId) {
-      videoConstraints.deviceId = { exact: deviceId };
-    } else if (state.videoTrack && state.videoTrack.getSettings().deviceId) {
-      videoConstraints.deviceId = { exact: state.videoTrack.getSettings().deviceId };
-    } else {
-      videoConstraints.facingMode = { ideal: "environment" };
-    }
+    const currentDeviceId = state.videoTrack && state.videoTrack.getSettings().deviceId;
+    const targetDeviceId = deviceId || currentDeviceId || "";
 
     try {
       if (state.videoTrack) state.videoTrack.stop();
-      let stream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
-      } catch {
-        videoConstraints.frameRate = { ideal: fps };
-        stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false });
-      }
+      const capture = await captureCameraStream({
+        quality,
+        fps,
+        deviceId: targetDeviceId,
+        audio: false
+      });
 
-      const newTrack = stream.getVideoTracks()[0];
+      const newTrack = capture.stream.getVideoTracks()[0];
       replaceTrack("video", newTrack);
       state.videoTrack = newTrack;
       rebuildMediaStream();
       $("preview").srcObject = state.myStream;
+      setBitrate(getTargetBitrate() * 1000);
       checkZoomCapabilities();
       updateLiveResDisplay();
 
