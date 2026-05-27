@@ -4,6 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>PEPSCam Control V2.5b</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Prompt:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="pepscam.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.5/peerjs.min.js"></script>
@@ -11,6 +15,15 @@
   <script src="https://cdn.jsdelivr.net/npm/obs-websocket-js@5"></script>
 </head>
 <body>
+  <div class="bg-fx" aria-hidden="true">
+    <div class="grid-scan"></div>
+    <div class="speed-lines"></div>
+    <span class="particle"></span>
+    <span class="particle"></span>
+    <span class="particle"></span>
+    <span class="particle"></span>
+  </div>
+
   <div id="mode-screen" class="mode-screen hidden">
     <div id="waiting-screen" class="waiting-overlay">
       <i class="fa-solid fa-video fa-2x"></i>
@@ -22,6 +35,7 @@
 
   <div id="start-screen" class="screen center-screen hidden">
     <div class="simple-logo">
+      <img class="brand-image" src="assets/pepslive-logo.png" alt="PEPS LIVE">
       <div class="logo-main">PEPSCam</div>
       <div class="logo-sub">CONTROL</div>
     </div>
@@ -45,6 +59,7 @@
 
   <div id="connecting-screen" class="screen center-screen hidden">
     <div class="simple-logo">
+      <img class="brand-image" src="assets/pepslive-logo.png" alt="PEPS LIVE">
       <div class="logo-main">PEPSCam</div>
       <div class="logo-sub">CONTROL</div>
     </div>
@@ -76,7 +91,8 @@
 
   <main id="mode-control" class="control-panel hidden">
     <header class="control-header">
-      <div>
+      <div class="control-brand">
+        <img class="brand-image compact" src="assets/pepslive-logo.png" alt="PEPS LIVE">
         <div class="logo-header-main">PEPSCam</div>
         <div class="logo-header-sub">CONTROL CENTER</div>
       </div>

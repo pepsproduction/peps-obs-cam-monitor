@@ -4,12 +4,25 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>PEPSCam Sender V2.5b</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Prompt:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="pepscam.css">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.5/peerjs.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
 </head>
 <body class="phone">
+  <div class="bg-fx" aria-hidden="true">
+    <div class="grid-scan"></div>
+    <div class="speed-lines"></div>
+    <span class="particle"></span>
+    <span class="particle"></span>
+    <span class="particle"></span>
+    <span class="particle"></span>
+  </div>
+
   <main id="setup" class="phone-setup">
     <button class="phone-top-btn left" onclick="PEPSCamPhone.toggleFullScreen()" title="Fullscreen">
       <i class="fa-solid fa-expand"></i>
@@ -20,6 +33,7 @@
 
     <section class="phone-stack">
       <div class="simple-logo" style="margin-top:18px">
+        <img class="brand-image" src="assets/pepslive-logo.png" alt="PEPS LIVE">
         <div class="logo-main">PEPSCam</div>
         <div class="logo-sub">SENDER</div>
       </div>
