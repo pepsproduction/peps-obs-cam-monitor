@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>PEPSCam Sender V2.5b</title>
+  <link rel="stylesheet" href="pepscam.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.5/peerjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+</head>
+<body class="phone">
+  <main id="setup" class="phone-setup">
+    <button class="phone-top-btn left" onclick="PEPSCamPhone.toggleFullScreen()" title="Fullscreen">
+      <i class="fa-solid fa-expand"></i>
+    </button>
+    <button class="phone-top-btn right" onclick="PEPSCamPhone.toggleSettingsModal(true)">
+      <i class="fa-solid fa-gear"></i> SETTINGS
+    </button>
+
+    <section class="phone-stack">
+      <div class="simple-logo" style="margin-top:18px">
+        <div class="logo-main">PEPSCam</div>
+        <div class="logo-sub">SENDER</div>
+      </div>
+
+      <div class="setup-block">
+        <label>Target Room ID</label>
+        <div class="room-input-row">
+          <input id="room-id" class="room-input" type="tel" inputmode="numeric" placeholder="######" maxlength="6" oninput="PEPSCamPhone.checkRoomConfig()">
+          <button class="btn-icon" style="width:64px;height:60px;color:#60a5fa" onclick="PEPSCamPhone.startQRScanner()">
+            <i class="fa-solid fa-qrcode fa-2x"></i>
+          </button>
+        </div>
+        <div id="setup-room-name" class="room-name-check">
+          <i class="fa-solid fa-circle-check"></i> <span id="setup-room-name-text"></span>
+        </div>
+      </div>
+
+      <div class="setup-block blue">
+        <label>Send To (Slot)</label>
+        <select id="cam-index" class="compact-select" style="height:44px;font-size:14px;font-weight:900">
+          <option value="1">CAMERA 1</option>
+          <option value="2">CAMERA 2</option>
+          <option value="3">CAMERA 3</option>
+          <option value="4">CAMERA 4</option>
+          <option value="5">CAMERA 5</option>
+          <option value="6">CAMERA 6</option>
+          <option value="7">CAMERA 7</option>
+          <option value="8">CAMERA 8</option>
+        </select>
+      </div>
+
+      <button class="btn-primary" style="width:100%;font-size:20px;padding:16px" onclick="PEPSCamPhone.startStreaming()">
+        START STREAMING
+      </button>
+
+      <div class="footer-brand" style="border-top:0">
+        Developed by <strong>PEPS</strong>
+        <small>PEPSCam V2.5b</small>
+      </div>
+    </section>
+  </main>
+
+  <section id="settings-ui" class="settings-modal">
+    <div class="settings-head">
+      <h2 style="margin:0;font-size:21px"><i class="fa-solid fa-sliders"></i> Settings</h2>
+      <button class="btn-icon" onclick="PEPSCamPhone.toggleSettingsModal(false)"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+
+    <div class="settings-grid">
+      <div class="setup-block">
+        <label>Select Camera</label>
+        <select id="camera-select" class="compact-select" style="height:42px">
+          <option value="">Default (Rear/Auto)</option>
+        </select>
+      </div>
+
+      <div class="setup-block">
+        <label>Select Audio Input (Mic)</label>
+        <select id="audio-source" class="compact-select" style="height:42px">
+          <option value="">Default (Auto)</option>
+        </select>
+      </div>
+
+      <div class="two-col">
+        <div class="setup-block">
+          <label>Res</label>
+          <select id="res" class="compact-select">
+            <option value="1080" selected>1080p</option>
+            <option value="720">720p</option>
+            <option value="480">480p</option>
+          </select>
+        </div>
+        <div class="setup-block">
+          <label>FPS</label>
+          <select id="fps" class="compact-select">
+            <option value="30">30</option>
+            <option value="60" selected>60</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="setup-block">
+        <label>Bitrate</label>
+        <select id="bitrate" class="compact-select" onchange="PEPSCamPhone.checkCustomBitrate(this)">
+          <option value="2000">2.0 M</option>
+          <option value="2500" selected>2.5 M</option>
+          <option value="3000">3.0 M</option>
+          <option value="3500">3.5 M</option>
+          <option value="4000">4.0 M</option>
+          <option value="6000">6.0 M</option>
+          <option value="8500">8.5 M</option>
+          <option value="10000">10 M</option>
+          <option value="custom">Custom...</option>
+        </select>
+      </div>
+
+      <div class="setup-block">
+        <label>Audio Start State</label>
+        <select id="audio-enable" class="compact-select">
+          <option value="false">Mute on Start</option>
+          <option value="true" selected>Unmute on Start</option>
+        </select>
+      </div>
+
+      <button class="btn-green" style="width:100%;height:44px" onclick="PEPSCamPhone.toggleSettingsModal(false)">DONE</button>
+    </div>
+  </section>
+
+  <section id="live-ui" class="phone-live hidden" onclick="PEPSCamPhone.toggleUI(event)">
+    <video id="preview" class="video-full" autoplay playsinline muted></video>
+
+    <div id="grid-layer" class="grid-layer hidden">
+      <div></div><div></div><div></div>
+      <div></div><div></div><div></div>
+      <div></div><div></div><div></div>
+    </div>
+
+    <div id="overlay-controls" class="overlay-controls">
+      <div class="live-top">
+        <div class="live-status">
+          <div class="row">
+            <span id="status-dot" class="status-dot"></span>
+            <span id="status-txt">CONNECTING...</span>
+          </div>
+          <div id="room-info" class="room-info">Room: ----</div>
+          <div id="live-room-name" class="live-room-name hidden"></div>
+        </div>
+
+        <div class="live-pills">
+          <div id="realtime-bw" class="live-pill">0 kbps</div>
+          <div id="battery-stat" class="live-pill" style="color:#fde047"><i class="fa-solid fa-bolt"></i> --%</div>
+          <div class="live-pill" style="color:#67e8f9"><i class="fa-solid fa-video"></i> <span id="live-res-text">-- x -- --fps</span></div>
+        </div>
+
+        <div class="live-selects">
+          <select id="live-res" onchange="PEPSCamPhone.applyLiveSettings()">
+            <option value="1080">1080p</option>
+            <option value="720">720p</option>
+            <option value="480">480p</option>
+          </select>
+          <select id="live-fps" onchange="PEPSCamPhone.applyLiveSettings()">
+            <option value="60">60</option>
+            <option value="30">30</option>
+          </select>
+          <select id="live-bitrate" onchange="PEPSCamPhone.updateLiveBitrate(this.value)">
+            <option value="2000">2.0 M</option>
+            <option value="2500">2.5 M</option>
+            <option value="3000">3.0 M</option>
+            <option value="3500">3.5 M</option>
+            <option value="4000">4.0 M</option>
+            <option value="6000">6.0 M</option>
+            <option value="8500">8.5 M</option>
+            <option value="10000">10 M</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="zoom-container" class="zoom-wrapper hidden">
+        <i class="fa-solid fa-plus" style="font-size:10px"></i>
+        <input id="zoom-slider" type="range" min="1" max="5" step="0.1" value="1" oninput="PEPSCamPhone.applyZoom(this.value)">
+        <i class="fa-solid fa-minus" style="font-size:10px"></i>
+      </div>
+
+      <div class="live-bottom-left">
+        <button class="stop-btn" onclick="PEPSCamPhone.stopStreaming()"><i class="fa-solid fa-stop"></i></button>
+        <button class="reset-btn" onclick="PEPSCamPhone.reconnectSignaling()"><i class="fa-solid fa-rotate"></i> RESET</button>
+      </div>
+
+      <div class="bottom-selects">
+        <select id="live-mic-select" onchange="PEPSCamPhone.switchMic(this.value)">
+          <option value="">Change Mic...</option>
+        </select>
+        <select id="live-cam-select" onchange="PEPSCamPhone.switchCamera(this.value)">
+          <option value="">Change Lens...</option>
+        </select>
+      </div>
+
+      <div class="right-bar">
+        <button class="round-control" onclick="PEPSCamPhone.toggleFullScreen()"><i class="fa-solid fa-expand"></i></button>
+        <button class="round-control" onclick="PEPSCamPhone.rotateUI()"><i class="fa-solid fa-rotate-right"></i></button>
+        <button id="torch-btn" class="round-control" onclick="PEPSCamPhone.toggleTorch()"><i class="fa-solid fa-bolt"></i></button>
+        <button id="mic-btn" class="round-control green" onclick="PEPSCamPhone.toggleMic()"><i class="fa-solid fa-microphone"></i></button>
+        <button class="round-control" onclick="PEPSCamPhone.triggerAutoFocus()"><i class="fa-solid fa-crosshairs"></i></button>
+        <button class="round-control" onclick="PEPSCamPhone.toggleGrid()"><i class="fa-solid fa-border-all"></i></button>
+      </div>
+    </div>
+  </section>
+
+  <section id="qr-overlay" class="qr-overlay hidden">
+    <video id="qr-video" autoplay playsinline muted></video>
+    <div class="qr-frame"></div>
+    <button class="qr-cancel" onclick="PEPSCamPhone.stopQRScanner()">CANCEL</button>
+    <canvas id="qr-canvas" hidden></canvas>
+  </section>
+
+  <script src="phone.js"></script>
+</body>
+</html>

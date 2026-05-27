@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PEPSCam Control V2.5b</title>
+  <link rel="stylesheet" href="pepscam.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.5/peerjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/obs-websocket-js@5"></script>
+</head>
+<body>
+  <div id="mode-screen" class="mode-screen hidden">
+    <div id="waiting-screen" class="waiting-overlay">
+      <i class="fa-solid fa-video fa-2x"></i>
+      <span id="waiting-text">WAITING FOR CAMERA...</span>
+    </div>
+    <video id="remote-video" autoplay playsinline></video>
+    <button class="reset-screen-btn" onclick="location.reload()"><i class="fa-solid fa-rotate"></i> Reset</button>
+  </div>
+
+  <div id="start-screen" class="screen center-screen hidden">
+    <div class="simple-logo">
+      <div class="logo-main">PEPSCam</div>
+      <div class="logo-sub">CONTROL</div>
+    </div>
+
+    <div id="rejoin-area" class="card hidden" style="margin-bottom:16px">
+      <p style="margin:0 0 8px;color:#9ca3af;font-size:12px">Previous Session Found</p>
+      <div id="prev-room-id" class="mono-room" style="margin-bottom:14px">------</div>
+      <button class="btn-green" style="width:100%;margin-bottom:8px" onclick="PEPSCamMonitor.initializeControl(true)">Rejoin Room</button>
+      <button class="btn-ghost" style="width:100%" onclick="PEPSCamMonitor.initializeControl(false)">Create New Room</button>
+    </div>
+
+    <button id="btn-start-fresh" class="btn-primary" onclick="PEPSCamMonitor.initializeControl(false)">
+      <i class="fa-solid fa-play"></i> Start New Session
+    </button>
+
+    <div class="version-note">
+      Developed by <strong>PEPS</strong>
+      <small>Version 2.5b</small>
+    </div>
+  </div>
+
+  <div id="connecting-screen" class="screen center-screen hidden">
+    <div class="simple-logo">
+      <div class="logo-main">PEPSCam</div>
+      <div class="logo-sub">CONTROL</div>
+    </div>
+
+    <div class="card">
+      <div id="connect-spinner" style="font-size:38px;color:#3b82f6;margin-bottom:12px">
+        <i class="fa-solid fa-circle-notch spinner"></i>
+      </div>
+      <div id="connect-icon-success" class="hidden" style="font-size:38px;color:#22c55e;margin-bottom:12px">
+        <i class="fa-solid fa-circle-check"></i>
+      </div>
+      <div id="connect-icon-fail" class="hidden" style="font-size:38px;color:#ef4444;margin-bottom:12px">
+        <i class="fa-solid fa-circle-xmark"></i>
+      </div>
+      <div id="connecting-room-id" class="mono-room">------</div>
+      <p id="connect-status" style="color:#9ca3af;font-size:13px;margin:8px 0 10px">กำลังเชื่อมต่อ Signaling...</p>
+      <div class="connect-steps">
+        <div id="step-signal"><i class="fa-solid fa-circle" style="font-size:6px"></i> Signaling Connection</div>
+        <div id="step-room"><i class="fa-solid fa-circle" style="font-size:6px"></i> Room Created</div>
+        <div id="step-ready"><i class="fa-solid fa-circle" style="font-size:6px"></i> Ready</div>
+      </div>
+      <button id="btn-retry" class="btn-red hidden" style="width:100%" onclick="PEPSCamMonitor.retryConnection()">
+        <i class="fa-solid fa-rotate-right"></i> ลองใหม่
+      </button>
+    </div>
+
+    <div class="version-note">Developed by <strong>PEPS</strong></div>
+  </div>
+
+  <main id="mode-control" class="control-panel hidden">
+    <header class="control-header">
+      <div>
+        <div class="logo-header-main">PEPSCam</div>
+        <div class="logo-header-sub">CONTROL CENTER</div>
+      </div>
+      <div class="header-actions">
+        <select id="max-cams-select" class="compact-select" onchange="PEPSCamMonitor.changeMaxCams(this.value)">
+          <option value="1">1 Cam</option>
+          <option value="2">2 Cams</option>
+          <option value="3">3 Cams</option>
+          <option value="4">4 Cams</option>
+          <option value="5">5 Cams</option>
+          <option value="6">6 Cams</option>
+          <option value="7">7 Cams</option>
+          <option value="8">8 Cams</option>
+        </select>
+        <button class="btn-icon" title="Reload" onclick="location.reload()"><i class="fa-solid fa-rotate"></i></button>
+      </div>
+    </header>
+
+    <section class="room-card">
+      <span class="eyebrow">Room ID</span>
+      <div id="display-room-id" class="mono-room">------</div>
+      <button class="qr-open" title="Phone QR" onclick="PEPSCamMonitor.openModal('phone-link-modal')">
+        <i class="fa-solid fa-qrcode"></i>
+      </button>
+
+      <div id="room-name-display" class="room-name-line">
+        <em id="room-name-text">ไม่มีชื่อห้อง</em>
+        <button class="qr-open" style="position:static" title="Edit room name" onclick="PEPSCamMonitor.showRoomNameEdit()">
+          <i class="fa-solid fa-pen"></i>
+        </button>
+      </div>
+
+      <div id="room-name-edit" class="room-edit hidden">
+        <input id="room-name-input" class="compact-input" maxlength="30" placeholder="ชื่อห้อง (ไม่บังคับ)">
+        <button class="btn-small" style="background:#16a34a" onclick="PEPSCamMonitor.confirmRoomName()"><i class="fa-solid fa-check"></i></button>
+        <button class="btn-small" style="background:#374151" onclick="PEPSCamMonitor.cancelRoomNameEdit()"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+    </section>
+
+    <section id="cam-list" class="cam-list"></section>
+
+    <section class="data-card">
+      <span>Total All Data</span>
+      <strong id="val-total-data">0.0 MB</strong>
+      <button onclick="PEPSCamMonitor.resetDataUsage()">R</button>
+    </section>
+
+    <section class="bottom-actions">
+      <button class="btn-primary" onclick="PEPSCamMonitor.openLinkModal()">GET OBS LINKS</button>
+      <button class="btn-red" onclick="PEPSCamMonitor.openNewRoomModal()">Stop &amp; New Room</button>
+    </section>
+
+    <footer class="footer-brand">
+      Developed by <strong>PEPS</strong>
+      <small>V2.5b</small>
+    </footer>
+  </main>
+
+  <div id="obs-link-modal" class="modal-overlay">
+    <div class="modal-box">
+      <h3 style="color:#60a5fa">OBS Browser Sources</h3>
+      <div class="notice">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        ต้องเปิด WebSocket Server ใน OBS<br>
+        Tools &rarr; WebSocket Server Settings<br>
+        Port: 4455 | ไม่ใส่รหัส
+      </div>
+      <div id="links-container" class="link-list"></div>
+      <button class="btn-ghost" style="width:100%;margin-top:12px" onclick="PEPSCamMonitor.closeModal('obs-link-modal')">Close</button>
+    </div>
+  </div>
+
+  <div id="phone-link-modal" class="modal-overlay">
+    <div class="modal-box">
+      <h3>Scan to Connect</h3>
+      <div class="qr-box"><canvas id="qr-code-canvas" width="132" height="132"></canvas></div>
+      <div class="phone-url-line">
+        <input id="phone-url-input" class="compact-input" readonly>
+        <button class="btn-small" onclick="PEPSCamMonitor.copyPhoneLink()">Copy</button>
+      </div>
+      <button class="btn-ghost" style="width:100%;margin-top:12px" onclick="PEPSCamMonitor.closeModal('phone-link-modal')">Close</button>
+    </div>
+  </div>
+
+  <div id="new-room-modal" class="modal-overlay">
+    <div class="modal-box">
+      <h3 style="color:#ef4444">Warning</h3>
+      <p style="color:#cbd5e1;font-size:13px;margin:0 0 8px">Create New Room?</p>
+      <p style="color:#60a5fa;font-size:11px;margin:0 0 16px">ถ้า OBS เปิดอยู่ ระบบจะอัปเดตลิงก์ของ Source เดิมให้เป็นห้องใหม่โดยอัตโนมัติ</p>
+      <button id="confirm-new-room-btn" class="btn-red" style="width:100%;background:#dc2626;color:#fff" onclick="PEPSCamMonitor.confirmNewRoom()">Yes</button>
+      <button class="btn-ghost" style="width:100%;margin-top:10px" onclick="PEPSCamMonitor.closeModal('new-room-modal')">Cancel</button>
+    </div>
+  </div>
+
+  <script src="monitor.js"></script>
+</body>
+</html>
